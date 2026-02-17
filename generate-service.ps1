@@ -45,7 +45,16 @@ Write-Host "目标目录：$TargetDir" -ForegroundColor Cyan
 # 准备服务名的各种变体
 $ServiceNameLower = $ServiceName.ToLower()
 $ServiceNameUpper = $ServiceName.ToUpper()
-$ServiceNameCapitalized = $ServiceName.Substring(0,1).ToUpper() + $ServiceName.Substring(1).ToLower()
+
+# 判断是否已经是驼峰命名（包含大写字母，且不是全大写）
+# 如果是驼峰命名，保持原样；否则转换为首字母大写格式
+if ($ServiceName -cmatch '[A-Z]' -and $ServiceName -cne $ServiceNameUpper) {
+    # 已经是驼峰命名，保持原样
+    $ServiceNameCapitalized = $ServiceName
+} else {
+    # 转换为首字母大写格式
+    $ServiceNameCapitalized = $ServiceName.Substring(0,1).ToUpper() + $ServiceName.Substring(1).ToLower()
+}
 
 # 步骤1：复制项目文件（排除target、.git等目录）
 Write-Host "`n步骤1：复制项目文件..." -ForegroundColor Yellow
@@ -78,7 +87,7 @@ $replacements = @(
     @{ Pattern = 'SpringTemplateService'; Replacement = "$ServiceNameCapitalized" + "Service" },
     @{ Pattern = 'SpringTemplateCommon'; Replacement = "$ServiceNameCapitalized" + "Common" },
     @{ Pattern = 'SpringTemplateApi'; Replacement = "$ServiceNameCapitalized" + "Api" },
-    @{ Pattern = 'SPRINGTEMPLATE'; Replacement = $ServiceNameUpper },
+    @{ Pattern = 'SPRINGTEMPLATE'; Replacement = $ServiceNameLower },
     @{ Pattern = 'SpringTemplate'; Replacement = $ServiceNameCapitalized },
     @{ Pattern = 'springtemplate'; Replacement = $ServiceNameLower }
 )
@@ -95,7 +104,8 @@ $processedFiles = 0
 
 foreach ($file in $filesToProcess) {
     try {
-        $content = Get-Content $file.FullName -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
+        # 使用 System.IO.File 读取文件，自动处理 BOM
+        $content = [System.IO.File]::ReadAllText($file.FullName, [System.Text.Encoding]::UTF8)
         if ($null -eq $content) {
             continue
         }
@@ -111,9 +121,10 @@ foreach ($file in $filesToProcess) {
             }
         }
         
-        # 如果内容被修改，写回文件
+        # 如果内容被修改，使用不带 BOM 的 UTF-8 编码写回文件
         if ($modified) {
-            Set-Content -Path $file.FullName -Value $content -Encoding UTF8 -NoNewline
+            $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+            [System.IO.File]::WriteAllText($file.FullName, $content, $utf8NoBom)
             $processedFiles++
         }
     } catch {
